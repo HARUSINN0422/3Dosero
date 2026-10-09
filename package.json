@@ -1,0 +1,36 @@
+{
+  "name": "3dosero",
+  "version": "1.0.0",
+  "description": "8×8×8の3Dオセロ。Node.jsサーバーでローカル対戦・オンライン対戦・GitHub自動更新に対応",
+  "main": "server.js",
+  "scripts": {
+    "test": "node test/game.test.js && node test/ws.test.js",
+    "start": "node server.js",
+    "update": "node lib/apply-update.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "github:HARUSINN0422/3Dosero"
+  },
+  "keywords": [
+    "othello",
+    "3d",
+    "reversi",
+    "multiplayer"
+  ],
+  "author": "",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/HARUSINN0422/3Dosero/issues"
+  },
+  "homepage": "https://github.com/HARUSINN0422/3Dosero",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.3.0",
+    "three": "^0.186.1",
+    "ws": "^8.22.0"
+  }
+}

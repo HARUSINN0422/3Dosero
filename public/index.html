@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="description" content="8×8×8 の立体ボードで遊ぶ3Dオセロ。ローカル対戦・オンライン対戦に対応。" />
+  <title>3D オセロ 8×8×8</title>
+  <link rel="stylesheet" href="/css/style.css" />
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='28' fill='%2317171d'/%3E%3Ccircle cx='44' cy='24' r='14' fill='%23f2f3f6'/%3E%3C/svg%3E" />
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "/vendor/three/three.module.js",
+        "three/addons/": "/vendor/three/addons/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="app">
+    <div id="scene-container"></div>
+
+    <!-- ===== HUD（ゲーム中） ===== -->
+    <header id="hud" class="hidden">
+      <div class="hud-group hud-left">
+        <div id="mode-label" class="chip">ローカル対戦</div>
+        <div id="room-label" class="chip hidden"></div>
+      </div>
+      <div class="hud-group hud-center">
+        <div id="score" class="score">
+          <span class="stone stone-black"></span><b id="count-black">4</b>
+          <span class="score-sep">:</span>
+          <b id="count-white">4</b><span class="stone stone-white"></span>
+        </div>
+        <div id="turn-indicator" class="turn-indicator">
+          <span id="turn-stone" class="stone stone-black"></span>
+          <span id="turn-text">黒の番</span>
+        </div>
+      </div>
+      <div class="hud-group hud-right">
+        <button id="btn-rules" class="btn btn-ghost btn-sm">ルール</button>
+        <button id="btn-leave" class="btn btn-ghost btn-sm">やめる</button>
+      </div>
+    </header>
+
+    <!-- ===== メニュー ===== -->
+    <div id="menu" class="overlay screen">
+      <div class="menu-box">
+        <h1 class="title">3D オセロ<span class="title-sub">8×8×8</span></h1>
+        <p class="subtitle">8×8×8 の立体マス目で、球をめぐる3Dオセロ。</p>
+
+        <div class="menu-buttons">
+          <button id="btn-local" class="btn btn-primary btn-lg">ローカル対戦<span class="btn-sub">1台の端末で2人</span></button>
+          <button id="btn-online" class="btn btn-secondary btn-lg">オンライン対戦<span class="btn-sub">離れた2台で対戦</span></button>
+        </div>
+
+        <div id="online-menu" class="panel hidden">
+          <button id="btn-create" class="btn btn-primary">部屋を作成する</button>
+          <div class="or-divider"><span>または</span></div>
+          <div class="join-row">
+            <input id="input-code" type="text" maxlength="8" placeholder="招待コード" autocomplete="off" spellcheck="false" />
+            <button id="btn-join" class="btn btn-secondary">参加する</button>
+          </div>
+          <p id="join-error" class="form-error hidden"></p>
+        </div>
+
+        <div class="menu-footer">
+          <button id="btn-rules-menu" class="link-btn">遊び方・ルール</button>
+          <span id="update-status" class="update-status"></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== 部屋待機 ===== -->
+    <div id="waiting" class="overlay screen hidden">
+      <div class="panel center-panel">
+        <h2>招待コード</h2>
+        <div id="room-code" class="code-display">----</div>
+        <button id="btn-copy" class="btn btn-secondary btn-sm">コードをコピー</button>
+        <p class="waiting-text">相手にコードを送ってください。<br />参加を待っています…</p>
+        <div class="spinner"></div>
+        <button id="btn-wait-back" class="btn btn-ghost btn-sm">戻る</button>
+      </div>
+    </div>
+
+    <!-- ===== 結果 ===== -->
+    <div id="result" class="overlay screen hidden">
+      <div class="panel center-panel">
+        <h2 id="result-title">対局終了</h2>
+        <div class="result-score">
+          <span class="stone stone-black"></span><b id="result-black">0</b>
+          <span class="score-sep">:</span>
+          <b id="result-white">0</b><span class="stone stone-white"></span>
+        </div>
+        <p id="result-message" class="result-message"></p>
+        <div id="result-actions" class="result-actions">
+          <button id="btn-rematch" class="btn btn-primary">もう一度対局</button>
+          <button id="btn-to-menu" class="btn btn-ghost">メニューへ</button>
+        </div>
+        <p id="rematch-status" class="rematch-status hidden"></p>
+      </div>
+    </div>
+
+    <!-- ===== 接続切断 ===== -->
+    <div id="disconnect" class="overlay screen hidden">
+      <div class="panel center-panel">
+        <h2>接続が切断されました</h2>
+        <p class="waiting-text" id="disconnect-text">サーバーに接続できません。</p>
+        <div class="result-actions">
+          <button id="btn-reconnect" class="btn btn-primary">再接続</button>
+          <button id="btn-disconnect-menu" class="btn btn-ghost">メニューへ</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ===== ルール ===== -->
+    <div id="rules-modal" class="overlay hidden">
+      <div class="panel rules-panel">
+        <h2>遊び方・ルール</h2>
+        <div class="rules-body">
+          <h3>基本</h3>
+          <ul>
+            <li>8×8×8（512マス）の立体ボードに、黒と白の<strong>球</strong>を交互に置きます。</li>
+            <li>最初は中央の 2×2×2（市松模様）に黒4個・白4個が並んでいます。</li>
+            <li>先手は黒です。</li>
+          </ul>
+          <h3>置ける場所</h3>
+          <ul>
+            <li>上下左右・斜め・空間内の斜めまで、<strong>26方向すべて</strong>の直線上で、相手の球を自分の球で挟める場所にしか置けません。</li>
+            <li>挟んだ相手の球は、線上のすべてが自分の色に<strong>反転</strong>します（1手でいくつも反転できます）。</li>
+            <li>置ける場所には光るヒントが出ます。ドラッグで視点回転、ホイールでズームできます。</li>
+          </ul>
+          <h3>勝敗</h3>
+          <ul>
+            <li>置けない側は<strong>パス</strong>します。双方が置けなくなったら終了です。</li>
+            <li>最終的に球の数が多い方が勝ちです。</li>
+          </ul>
+          <h3>オンライン対戦</h3>
+          <ul>
+            <li>「部屋を作成」すると招待コードが出るので、相手に送ります。</li>
+            <li>相手がコードで参加すると対局開始。黒が作成者、白が参加者です。</li>
+          </ul>
+        </div>
+        <button id="btn-rules-close" class="btn btn-primary btn-sm">閉じる</button>
+      </div>
+    </div>
+
+    <!-- ===== トースト ===== -->
+    <div id="toasts"></div>
+  </div>
+
+  <script type="module" src="/js/main.js"></script>
+</body>
+</html>
