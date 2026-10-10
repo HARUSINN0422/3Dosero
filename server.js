@@ -23,13 +23,13 @@ const PUBLIC_DIR = path.join(ROOT, 'public');
 const DATA_DIR = path.join(ROOT, 'data');
 const LOG_DIR = path.join(ROOT, 'logs');
 
-const PORT = Number(process.env.PORT || 3000);
+const PORT = Number(process.env.PORT || 3009);
 const HOST = process.env.HOST || '0.0.0.0';
 const AUTO_UPDATE = (process.env.AUTO_UPDATE ?? '1') !== '0';
 const UPDATE_REPO = process.env.UPDATE_REPO || 'HARUSINN0422/3Dosero';
 const UPDATE_BRANCH = process.env.UPDATE_BRANCH || 'main';
 const UPDATE_FIRST_DELAY_MS = Number(process.env.UPDATE_FIRST_DELAY_MS || 60_000);
-const UPDATE_CHECK_INTERVAL_MS = Number(process.env.UPDATE_CHECK_INTERVAL_MS || 15 * 60_000);
+const UPDATE_CHECK_INTERVAL_MS = Number(process.env.UPDATE_CHECK_INTERVAL_MS || 60_000);
 const RESTART_AFTER_UPDATE = (process.env.RESTART_AFTER_UPDATE ?? '1') !== '0';
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);

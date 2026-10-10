@@ -564,6 +564,8 @@ async function refreshUpdateStatus() {
 }
 
 refreshUpdateStatus();
+// 1分ごとに更新状態を再確認
+setInterval(refreshUpdateStatus, 60_000);
 
 // 初期表示
 showScreen('menu');
