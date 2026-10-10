@@ -47,16 +47,16 @@ npm start
 起動ログ:
 
 ```
-3Dオセロサーバー起動: http://0.0.0.0:3000
+3Dオセロサーバー起動: http://0.0.0.0:3009
 モード: ローカル対戦 / オンライン対戦 / 自動更新 ON (HARUSINN0422/3Dosero@main)
 ```
 
 ### 5. ブラウザでアクセスする
 
-- **自分だけの場合**: <http://localhost:3000>
-- **同一ネットワークの別端末から**: `http://<このPCのIPアドレス>:3000`
-  - 例: `http://192.168.1.10:3000`（PCのIPは `ipconfig` / `ip addr` で確認）
-  - Windows/macOS の場合はファイアウォールでポート **TCP 3000** の許可が必要なことがあります
+- **自分だけの場合**: <http://localhost:3009>
+- **同一ネットワークの別端末から**: `http://<このPCのIPアドレス>:3009`
+  - 例: `http://192.168.1.10:3009`（PCのIPは `ipconfig` / `ip addr` で確認）
+  - Windows/macOS の場合はファイアウォールでポート **TCP 3009** の許可が必要なことがあります
 
 起動して画面が開いたら、あとは **「ローカル対戦」** か **「オンライン対戦」** を選んで開始です。
 
@@ -100,7 +100,7 @@ GitHub リポジトリ（既定: `HARUSINN0422/3Dosero` の `main` ブランチ�
 ### 動作の仕組み
 
 1. **起動直後**: 現在の GitHub の状態（最新コミット SHA）を `data/last_sync.json` に「同期済み」として記録（この時点では何もダウンロードしません）
-2. **定期チェック**: 既定で60秒後に行う初回チェック以降、**15分ごと**に最新コミットを照会
+2. **定期チェック**: 既定で60秒後に行う初回チェック以降、**常時1分ごと**に最新コミットを照会
 3. **差分があれば**: `codeload.github.com` からソースを tar.gz で取得 → `node_modules` / `.git` / `data` / `logs` を除いて上書き → `package.json` が変わっていれば `npm install` を実行 → **自動再起動**
 4. **再起動後**: クライアントは自動で再接続します（対局中の場合は部屋に復帰）
 
@@ -110,7 +110,7 @@ GitHub リポジトリ（既定: `HARUSINN0422/3Dosero` の `main` ブランチ�
 - **curl**:
 
   ```bash
-  curl -X POST http://localhost:3000/api/update/apply
+  curl -X POST http://localhost:3009/api/update/apply
   ```
 
 - **コマンドライン**:
@@ -123,7 +123,7 @@ GitHub リポジトリ（既定: `HARUSINN0422/3Dosero` の `main` ブランチ�
 ### 更新状態の確認
 
 ```bash
-curl http://localhost:3000/api/update/status
+curl http://localhost:3009/api/update/status
 ```
 
 ```json
@@ -145,13 +145,13 @@ curl http://localhost:3000/api/update/status
 
 | 環境変数 | 既定値 | 説明 |
 |---|---|---|
-| `PORT` | `3000` | 待受ポート |
+| `PORT` | `3009` | 待受ポート |
 | `HOST` | `0.0.0.0` | 待受アドレス（外部からの接続には 0.0.0.0） |
 | `AUTO_UPDATE` | `1` | `0` にすると自動更新（適用）を無効化 |
 | `UPDATE_REPO` | `HARUSINN0422/3Dosero` | 追跡する GitHub リポジトリ |
 | `UPDATE_BRANCH` | `main` | 追跡するブランチ |
 | `UPDATE_FIRST_DELAY_MS` | `60000` | 初回チェックまでの待ち時間（ミリ秒） |
-| `UPDATE_CHECK_INTERVAL_MS` | `900000` | チェック間隔（既定15分） |
+| `UPDATE_CHECK_INTERVAL_MS` | `60000` | チェック間隔（既定1分） |
 | `RESTART_AFTER_UPDATE` | `1` | 更新適用後の自動再起動（`0` で無効） |
 
 ---
@@ -182,6 +182,7 @@ npm test
 ```
 
 - `test/game.test.js` — 3Dオセロのロジック（初期配置・26方向の反転・パス/終了判定・ランダム100局の完走）
+- `test/updater.test.js` — 自動更新タイマー・定期チェックの動作
 - `test/ws.test.js` — サーバー統合（部屋作成/参加 → 実フル対局 → 再戦 → エラー系 → 静的配信）
 
 ---
@@ -213,8 +214,8 @@ npm test
 
 | 症状 | 対処 |
 |---|---|
-| `EADDRINUSE` | 別プロセスが3000番を使っています。`PORT=3001 npm start` |
-| 別端末から開けない | ファイアウォールでポート3000/TCPを許可、IPアドレスを確認 |
+| `EADDRINUSE` | 別プロセスが3009番を使っています。`PORT=3010 npm start` |
+| 別端末から開けない | ファイアウォールでポート3009/TCPを許可、IPアドレスを確認 |
 | オンラインで接続できない | サーバー側の `ws` がプロキシ等でブロックされていないか確認（WebSocket の Upgrade が必要） |
 | 自動更新が失敗する | `curl` と `tar` が使えるか確認。`GET /api/update/status` の `lastError` を確認 |
 | 更新後にサーバーが起動しない | `logs/server.log` を確認。`package.json` 変更時は `npm install` を再実行 |

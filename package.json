@@ -4,7 +4,7 @@
   "description": "8×8×8の3Dオセロ。Node.jsサーバーでローカル対戦・オンライン対戦・GitHub自動更新に対応",
   "main": "server.js",
   "scripts": {
-    "test": "node test/game.test.js && node test/ws.test.js",
+    "test": "node test/game.test.js && node test/updater.test.js && node test/ws.test.js",
     "start": "node server.js",
     "update": "node lib/apply-update.js"
   },
