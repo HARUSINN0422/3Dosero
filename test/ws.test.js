@@ -98,27 +98,27 @@ try {
   assert.strictEqual(health.ok, true);
   console.log('  ✓ サーバー起動 / ヘルスチェック');
 
-  // --- 部屋作成・参加 ---
+  // --- 入室順マッチング ---
   const a = createClient('A');
   const b = createClient('B');
   clients.push(a, b);
   await Promise.all([a.open(), b.open()]);
   console.log('  ✓ WebSocket 接続');
 
-  a.send({ t: 'create' });
-  const created = await a.wait((m) => m.t === 'created');
-  assert.ok(created.code && created.code.length >= 4);
-  assert.strictEqual(created.role, BLACK);
-  console.log(`  ✓ 部屋作成 (${created.code})`);
+  a.send({ t: 'match' });
+  const queuedA = await a.wait((m) => m.t === 'queued');
+  assert.strictEqual(queuedA.t, 'queued');
+  console.log('  ✓ 先着はマッチング待ち');
 
-  b.send({ t: 'join', code: created.code });
+  b.send({ t: 'match' });
   const startA = await a.wait((m) => m.t === 'start');
   const startB = await b.wait((m) => m.t === 'start');
   assert.strictEqual(startA.role, BLACK);
   assert.strictEqual(startB.role, WHITE);
+  assert.ok(startA.id && startA.id === startB.id);
   assert.strictEqual(startA.state.board.length, 512);
   assert.deepStrictEqual(startA.state.board, startB.state.board);
-  console.log('  ✓ 対局開始（黒=A / 白=B）');
+  console.log(`  ✓ 対局開始（黒=A / 白=B, ${startA.id}）`);
 
   // --- エラー系 ---
   b.send({ t: 'move', x: 0, y: 0, z: 0 }); // 白の番ではなく黒の番
@@ -154,9 +154,9 @@ try {
     assert.deepStrictEqual(otherState.state.board, state.board, 'クライアント間で盤面が不一致');
   }
   assert.ok(state.over, 'ゲームが終了しませんでした');
-  const c = countPieces(state.board);
-  assert.strictEqual(c.black + c.white, state.moveCount + 8);
-  console.log(`  ✓ ランダム対局完了 (黒${c.black}:${c.white}白, ${state.moveCount}手)`);
+  const pieces = countPieces(state.board);
+  assert.strictEqual(pieces.black + pieces.white, state.moveCount + 8);
+  console.log(`  ✓ ランダム対局完了 (黒${pieces.black}:${pieces.white}白, ${state.moveCount}手)`);
 
   // --- 再戦 ---
   a.send({ t: 'rematch' });
@@ -167,14 +167,44 @@ try {
   assert.strictEqual(newA.state.turn, BLACK);
   console.log('  ✓ 再戦（盤面リセット）');
 
-  // --- 存在しない部屋への参加 ---
-  const c2 = createClient('C');
-  clients.push(c2);
-  await c2.open();
-  c2.send({ t: 'join', code: 'ZZZZ' });
-  const notFound = await c2.wait((m) => m.t === 'error');
+  // --- 3人目は次のマッチを待つ。4人目とペアになる ---
+  const c = createClient('C');
+  const d = createClient('D');
+  clients.push(c, d);
+  await Promise.all([c.open(), d.open()]);
+  c.send({ t: 'match' });
+  await c.wait((m) => m.t === 'queued');
+  d.send({ t: 'match' });
+  const startC = await c.wait((m) => m.t === 'start');
+  const startD = await d.wait((m) => m.t === 'start');
+  assert.strictEqual(startC.role, BLACK);
+  assert.strictEqual(startD.role, WHITE);
+  assert.ok(startC.id !== startA.id);
+  console.log('  ✓ 次の2人も入室順でマッチ（黒=C / 白=D）');
+
+  // --- 存在しない対局への再接続 ---
+  const e = createClient('E');
+  clients.push(e);
+  await e.open();
+  e.send({ t: 'rejoin', id: 'ZZZZZZ' });
+  const notFound = await e.wait((m) => m.t === 'error');
   assert.ok(notFound.message.includes('見つかりません'));
-  console.log('  ✓ 存在しない部屋のエラー');
+  console.log('  ✓ 存在しない対局のエラー');
+
+  // --- キューから離脱すると次の人とマッチしない ---
+  const f = createClient('F');
+  const g = createClient('G');
+  clients.push(f, g);
+  await Promise.all([f.open(), g.open()]);
+  f.send({ t: 'match' });
+  await f.wait((m) => m.t === 'queued');
+  f.send({ t: 'leave' });
+  f.close();
+  await sleep(150);
+  g.send({ t: 'match' });
+  const queuedG = await g.wait((m) => m.t === 'queued' || m.t === 'start');
+  assert.strictEqual(queuedG.t, 'queued', '離脱した相手とマッチしてしまった');
+  console.log('  ✓ キュー離脱後は次の人とマッチしない');
 
   // --- 退出通知 ---
   b.close();

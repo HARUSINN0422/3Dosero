@@ -21,10 +21,8 @@ const els = {
   turnIndicator: $('turn-indicator'),
   menu: $('menu'),
   onlineMenu: $('online-menu'),
-  inputCode: $('input-code'),
   joinError: $('join-error'),
   waiting: $('waiting'),
-  roomCode: $('room-code'),
   result: $('result'),
   resultTitle: $('result-title'),
   resultBlack: $('result-black'),
@@ -48,14 +46,15 @@ const state = {
   game: null, // Game インスタンス（ローカル用）
   net: new Net(),
   online: {
-    code: null,
+    matchId: null,
     role: null, // BLACK または WHITE
     gameState: null, // サーバーからの最新状態
     reconnecting: false,
     reconnectTries: 0,
     leaveIntent: false,
-    lock: false, // create/join の多重送信防止
+    lock: false, // match の多重送信防止
     awaitingState: false, // 着手後の状態待ち
+    queued: false, // マッチング待ち中
   },
   lastNotice: null,
 };
@@ -224,7 +223,7 @@ async function ensureConnected() {
   }
 }
 
-async function createRoom() {
+async function startMatchmaking() {
   if (state.online.lock) return;
   els.joinError.classList.add('hidden');
   const ok = await ensureConnected();
@@ -234,25 +233,9 @@ async function createRoom() {
   }
   state.online.leaveIntent = false;
   state.online.lock = true;
-  state.net.send({ t: 'create' });
-}
-
-async function joinRoom() {
-  if (state.online.lock) return;
-  els.joinError.classList.add('hidden');
-  const code = els.inputCode.value.trim().toUpperCase();
-  if (!code) {
-    showJoinError('招待コードを入力してください。');
-    return;
-  }
-  const ok = await ensureConnected();
-  if (!ok) {
-    showJoinError('サーバーに接続できません。ネットワークを確認してください。');
-    return;
-  }
-  state.online.leaveIntent = false;
-  state.online.lock = true;
-  state.net.send({ t: 'join', code });
+  state.online.queued = true;
+  showScreen('waiting');
+  state.net.send({ t: 'match' });
 }
 
 function showJoinError(msg) {
@@ -263,18 +246,19 @@ function showJoinError(msg) {
 function enterOnlineMenu() {
   els.onlineMenu.classList.remove('hidden');
   els.joinError.classList.add('hidden');
-  ensureConnected(); // 接続を試みる（失敗は参加/作成時に報告）
+  ensureConnected(); // 接続を試みる（失敗はマッチ開始時に報告）
 }
 
 function backToMenu() {
   state.mode = null;
   state.game = null;
   state.online.gameState = null;
-  state.online.code = null;
+  state.online.matchId = null;
   state.online.role = null;
   state.online.leaveIntent = true;
   state.online.lock = false;
   state.online.awaitingState = false;
+  state.online.queued = false;
   if (state.net.connected) state.net.send({ t: 'leave' });
   board.clearHints();
   board.setInteractive(false);
@@ -284,17 +268,17 @@ function backToMenu() {
 function handleOnlineStart(msg) {
   state.mode = 'online';
   state.online.lock = false;
-  state.online.code = msg.code;
+  state.online.matchId = msg.id;
   state.online.role = msg.role;
   state.online.gameState = msg.state;
   state.online.reconnecting = false;
   state.online.reconnectTries = 0;
   state.online.awaitingState = false;
+  state.online.queued = false;
   state.lastNotice = null;
 
   els.modeLabel.textContent = 'オンライン対戦';
-  els.roomLabel.textContent = `部屋 ${msg.code}`;
-  els.roomLabel.classList.remove('hidden');
+  els.roomLabel.classList.add('hidden');
   showScreen('game');
   applyState(msg.state, { reset: true });
 
@@ -325,40 +309,57 @@ function handleRematchVote(msg) {
 async function attemptReconnect() {
   if (state.online.leaveIntent) return;
   if (state.online.reconnecting) return;
-  const waiting = !els.waiting.classList.contains('hidden');
-  if (state.mode !== 'online' && !waiting) return;
+  const waitingScreen = !els.waiting.classList.contains('hidden');
+  if (state.mode !== 'online' && !waitingScreen) return;
 
   state.online.reconnecting = true;
-  const code = state.online.code;
-  if (!code) {
-    state.online.reconnecting = false;
-    return;
-  }
+  const matchId = state.online.matchId;
+  const wasQueued = state.online.queued || waitingScreen;
 
   while (state.online.reconnectTries < 12 && !state.online.leaveIntent) {
     state.online.reconnectTries++;
     try {
       await state.net.reconnect();
-      // 部屋に再参加を試みる
-      const joinPromise = state.net.onceFiltered(
-        'message',
-        (m) => m.t === 'start' || m.t === 'rejoined' || m.t === 'error',
-        4500
-      );
-      state.net.send({ t: 'join', code });
-      const resp = await joinPromise;
-      if (resp && (resp.t === 'start' || resp.t === 'rejoined')) {
-        state.online.reconnecting = false;
-        if (resp.t === 'rejoined') {
-          els.roomCode.textContent = code;
-          showScreen('waiting');
+      if (matchId) {
+        const joinPromise = state.net.onceFiltered(
+          'message',
+          (m) => m.t === 'start' || m.t === 'rejoined' || m.t === 'error',
+          4500
+        );
+        state.net.send({ t: 'rejoin', id: matchId });
+        const resp = await joinPromise;
+        if (resp && (resp.t === 'start' || resp.t === 'rejoined')) {
+          state.online.reconnecting = false;
+          if (resp.t === 'rejoined') showScreen('waiting');
+          toast('再接続しました');
+          return;
         }
-        toast('再接続しました');
-        return;
-      }
-      if (resp && resp.t === 'error') {
+        if (resp && resp.t === 'error') {
+          state.online.reconnecting = false;
+          showDisconnect(`再接続できませんでした: ${resp.message}`);
+          return;
+        }
+      } else if (wasQueued) {
+        const queuePromise = state.net.onceFiltered(
+          'message',
+          (m) => m.t === 'start' || m.t === 'queued' || m.t === 'error',
+          4500
+        );
+        state.net.send({ t: 'match' });
+        const resp = await queuePromise;
+        if (resp && (resp.t === 'start' || resp.t === 'queued')) {
+          state.online.reconnecting = false;
+          if (resp.t === 'queued') showScreen('waiting');
+          toast('再接続しました');
+          return;
+        }
+        if (resp && resp.t === 'error') {
+          state.online.reconnecting = false;
+          showDisconnect(`再接続できませんでした: ${resp.message}`);
+          return;
+        }
+      } else {
         state.online.reconnecting = false;
-        showDisconnect(`再接続できませんでした: ${resp.message}`);
         return;
       }
     } catch {
@@ -383,23 +384,19 @@ function showDisconnect(text) {
 // ---------------------------------------------------------------------------
 const net = state.net;
 
-net.on('created', (msg) => {
+net.on('queued', () => {
   state.online.lock = false;
-  state.online.code = msg.code;
-  state.online.role = msg.role;
-  els.roomCode.textContent = msg.code;
+  state.online.queued = true;
   showScreen('waiting');
 });
 
 net.on('rejoined', (msg) => {
   state.online.lock = false;
-  state.online.code = msg.code;
+  state.online.matchId = msg.id;
   state.online.role = msg.role;
   state.online.gameState = msg.state;
-  // 相手（または自分）が揃うまで待機
-  els.roomCode.textContent = msg.code;
   showScreen('waiting');
-  toast('部屋に再接続しました。相手を待っています…');
+  toast('対局に再接続しました。相手を待っています…');
 });
 
 net.on('start', (msg) => handleOnlineStart(msg));
@@ -448,34 +445,7 @@ $('btn-local').addEventListener('click', startLocalGame);
 
 $('btn-online').addEventListener('click', enterOnlineMenu);
 
-$('btn-create').addEventListener('click', createRoom);
-
-$('btn-join').addEventListener('click', joinRoom);
-els.inputCode.addEventListener('keydown', (e) => {
-  if (e.key === 'Enter') joinRoom();
-});
-els.inputCode.addEventListener('input', () => {
-  const pos = els.inputCode.selectionStart;
-  els.inputCode.value = els.inputCode.value.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  els.inputCode.setSelectionRange(pos, pos);
-  els.joinError.classList.add('hidden');
-});
-
-$('btn-copy').addEventListener('click', async () => {
-  const code = els.roomCode.textContent;
-  try {
-    await navigator.clipboard.writeText(code);
-    toast('コードをコピーしました');
-  } catch {
-    // フォバック: 選択状態にする
-    const range = document.createRange();
-    range.selectNodeContents(els.roomCode);
-    const sel = getSelection();
-    sel.removeAllRanges();
-    sel.addRange(range);
-    toast('コードを選択しました（コピーして共有してください）');
-  }
-});
+$('btn-match').addEventListener('click', startMatchmaking);
 
 $('btn-wait-back').addEventListener('click', backToMenu);
 

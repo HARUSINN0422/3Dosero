@@ -1,6 +1,6 @@
 // 3Dオセロ サーバー
 // - 静的ファイル配信（Three.js の3Dボード UI）
-// - WebSocket によるオンライン対戦（ルーム方式・サーバー権威のゲーム進行）
+// - WebSocket によるオンライン対戦（入室順マッチング・サーバー権威のゲーム進行）
 // - GitHub からの自動更新
 
 import http from 'node:http';
@@ -58,7 +58,8 @@ app.get('/api/health', (req, res) => {
     name: '3dosero',
     version: pkg.version,
     uptimeSec: Math.round(process.uptime()),
-    rooms: rooms.size,
+    matches: rooms.size,
+    waiting: waiting.length,
   });
 });
 
@@ -101,19 +102,22 @@ app.use((req, res) => {
 const server = http.createServer(app);
 
 // ---------------------------------------------------------------------------
-// オンライン対戦ルーム
+// オンライン対戦（入室順に2人ずつマッチ）
 // ---------------------------------------------------------------------------
 /** @type {Map<string, Room>} */
 const rooms = new Map();
-const CODE_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+/** マッチング待ちの WebSocket（先着順） */
+/** @type {import('ws').WebSocket[]} */
+const waiting = [];
+const ID_CHARS = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 
-function makeRoomCode() {
+function makeMatchId() {
   for (;;) {
-    let code = '';
-    for (let i = 0; i < 4; i++) {
-      code += CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)];
+    let id = '';
+    for (let i = 0; i < 6; i++) {
+      id += ID_CHARS[Math.floor(Math.random() * ID_CHARS.length)];
     }
-    if (!rooms.has(code)) return code;
+    if (!rooms.has(id)) return id;
   }
 }
 
@@ -132,11 +136,26 @@ function roleOfSeat(index) {
 }
 
 function seatByWs(ws) {
-  for (const [code, room] of rooms) {
+  for (const [id, room] of rooms) {
     const i = room.seats.findIndex((s) => s.ws === ws);
-    if (i >= 0) return { room, seat: room.seats[i], role: roleOfSeat(i), index: i, code };
+    if (i >= 0) return { room, seat: room.seats[i], role: roleOfSeat(i), index: i, id };
   }
   return null;
+}
+
+function isOpen(ws) {
+  return ws && ws.readyState === WebSocket.OPEN;
+}
+
+function removeFromWaiting(ws) {
+  const i = waiting.indexOf(ws);
+  if (i >= 0) waiting.splice(i, 1);
+}
+
+function pruneWaiting() {
+  for (let i = waiting.length - 1; i >= 0; i--) {
+    if (!isOpen(waiting[i]) || seatByWs(waiting[i])) waiting.splice(i, 1);
+  }
 }
 
 function clearGcTimer(room) {
@@ -146,13 +165,13 @@ function clearGcTimer(room) {
   }
 }
 
-function maybeGc(room, code) {
+function maybeGc(room, id) {
   if (connectedSeats(room).length > 0) return;
   if (room.gcTimer) return;
   room.gcTimer = setTimeout(() => {
     if (connectedSeats(room).length === 0) {
-      rooms.delete(code);
-      log(`room ${code} を削除しました（無人）`);
+      rooms.delete(id);
+      log(`match ${id} を削除しました（無人）`);
     }
   }, 30_000);
   room.gcTimer.unref?.();
@@ -163,88 +182,114 @@ function broadcastRoom(room, obj) {
 }
 
 /** 各プレイヤーに個別の role を含む開始メッセージを送る */
-function sendStart(room, code) {
+function sendStart(room, id) {
   const state = room.game.serialize();
   const resumed = room.game.moveCount > 0;
   room.seats.forEach((seat, i) => {
-    send(seat.ws, { t: 'start', code, role: roleOfSeat(i), state, resumed });
+    send(seat.ws, { t: 'start', id, role: roleOfSeat(i), state, resumed });
   });
 }
 
-function handleCreate(ws) {
-  const existing = seatByWs(ws);
-  if (existing) return send(ws, { t: 'error', message: 'すでに部屋に参加しています' });
-  const code = makeRoomCode();
+function startMatch(firstWs, secondWs) {
+  const id = makeMatchId();
   const room = {
-    code,
+    id,
     seats: [
-      { ws, connected: true },
-      { ws: null, connected: false },
+      { ws: firstWs, connected: true },
+      { ws: secondWs, connected: true },
     ],
     game: new Game(),
     rematchVotes: new Set(),
     createdAt: Date.now(),
     gcTimer: null,
   };
-  rooms.set(code, room);
-  ws.roomCode = code;
-  send(ws, { t: 'created', code, role: BLACK });
-  log(`room ${code} を作成しました`);
+  rooms.set(id, room);
+  firstWs.matchId = id;
+  secondWs.matchId = id;
+  sendStart(room, id);
+  log(`match ${id}: 対戦開始（先着が黒）`);
 }
 
-function handleJoin(ws, codeRaw) {
-  const code = String(codeRaw || '').toUpperCase().trim();
-  const room = rooms.get(code);
-  if (!room) return send(ws, { t: 'error', message: '部屋が見つかりません（コードを確認してください）' });
+/** 入室順キューに並ぶ。2人揃い次第、先着が黒・後着が白で対局開始 */
+function handleMatch(ws) {
+  const existing = seatByWs(ws);
+  if (existing) return send(ws, { t: 'error', message: 'すでに対戦中です' });
+
+  pruneWaiting();
+  if (waiting.includes(ws)) {
+    send(ws, { t: 'queued' });
+    return;
+  }
+
+  const opponent = waiting.shift();
+  if (opponent && isOpen(opponent) && !seatByWs(opponent) && opponent !== ws) {
+    startMatch(opponent, ws);
+    return;
+  }
+
+  waiting.push(ws);
+  send(ws, { t: 'queued' });
+  log(`マッチング待機中: ${waiting.length}人`);
+}
+
+/** 切断後に同じ対局へ復帰する */
+function handleRejoin(ws, idRaw) {
+  const id = String(idRaw || '').toUpperCase().trim();
+  if (!id) return send(ws, { t: 'error', message: '対局IDがありません' });
+  const room = rooms.get(id);
+  if (!room) return send(ws, { t: 'error', message: '対局が見つかりません' });
 
   const existing = seatByWs(ws);
   if (existing) {
-    if (existing.code === code) return send(ws, { t: 'error', message: 'すでにその部屋に参加しています' });
+    if (existing.id === id) return send(ws, { t: 'error', message: 'すでにその対局に参加しています' });
     leaveCurrentRoom(ws);
   }
 
-  // 空席（未接続の席）を探す
-  let seatIndex = room.seats.findIndex((s) => !s.connected);
+  removeFromWaiting(ws);
+
+  const seatIndex = room.seats.findIndex((s) => !s.connected);
   if (seatIndex < 0) {
-    return send(ws, { t: 'error', message: '部屋が満員です' });
+    return send(ws, { t: 'error', message: '対局は満員です' });
   }
 
   clearGcTimer(room);
   room.seats[seatIndex] = { ws, connected: true };
-  ws.roomCode = code;
+  ws.matchId = id;
   room.rematchVotes.clear();
 
   const both = connectedSeats(room).length === 2;
   if (both) {
-    sendStart(room, code);
-    log(`room ${code}: 対戦開始`);
+    sendStart(room, id);
+    log(`match ${id}: 再接続して再開`);
   } else {
-    send(ws, { t: 'rejoined', code, role: roleOfSeat(seatIndex), state: room.game.serialize() });
-    log(`room ${code}: 再接続/待機`);
+    send(ws, { t: 'rejoined', id, role: roleOfSeat(seatIndex), state: room.game.serialize() });
+    log(`match ${id}: 再接続/待機`);
   }
 }
 
 function leaveCurrentRoom(ws, { notify = true } = {}) {
+  removeFromWaiting(ws);
+
   const info = seatByWs(ws);
   if (!info) return;
-  const { room, seat, code } = info;
+  const { room, seat, id } = info;
   seat.connected = false;
   seat.ws = null;
-  ws.roomCode = null;
+  ws.matchId = null;
   room.rematchVotes.clear();
 
   const otherSeat = room.seats.find((s) => s.connected);
   if (otherSeat && notify) {
     send(otherSeat.ws, { t: 'opponent_left' });
   }
-  maybeGc(room, code);
-  log(`room ${code}: プレイヤーが退出しました（残り ${connectedSeats(room).length}）`);
+  maybeGc(room, id);
+  log(`match ${id}: プレイヤーが退出しました（残り ${connectedSeats(room).length}）`);
 }
 
 function handleMove(ws, x, y, z) {
   const info = seatByWs(ws);
-  if (!info) return send(ws, { t: 'error', message: '部屋にいません' });
-  const { room, role, code } = info;
+  if (!info) return send(ws, { t: 'error', message: '対局に参加していません' });
+  const { room, role } = info;
   const game = room.game;
   if (game.over) return send(ws, { t: 'error', message: 'ゲームは終了しています' });
   if (game.turn !== role) return send(ws, { t: 'error', message: '今の番ではありません' });
@@ -268,8 +313,8 @@ function handleRematch(ws) {
   if (room.rematchVotes.size >= 2) {
     room.rematchVotes.clear();
     room.game.reset();
-    sendStart(room, info.code);
-    log(`room ${info.code}: 再戦`);
+    sendStart(room, info.id);
+    log(`match ${info.id}: 再戦`);
   }
 }
 
@@ -280,7 +325,7 @@ const wss = new WebSocketServer({ server, path: '/ws' });
 
 wss.on('connection', (ws) => {
   ws.isAlive = true;
-  ws.roomCode = null;
+  ws.matchId = null;
   ws.on('pong', () => {
     ws.isAlive = true;
   });
@@ -294,11 +339,11 @@ wss.on('connection', (ws) => {
     }
     try {
       switch (msg.t) {
-        case 'create':
-          handleCreate(ws);
+        case 'match':
+          handleMatch(ws);
           break;
-        case 'join':
-          handleJoin(ws, msg.code);
+        case 'rejoin':
+          handleRejoin(ws, msg.id);
           break;
         case 'move':
           handleMove(ws, msg.x, msg.y, msg.z);

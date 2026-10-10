@@ -51,16 +51,12 @@
 
         <div class="menu-buttons">
           <button id="btn-local" class="btn btn-primary btn-lg">ローカル対戦<span class="btn-sub">1台の端末で2人</span></button>
-          <button id="btn-online" class="btn btn-secondary btn-lg">オンライン対戦<span class="btn-sub">離れた2台で対戦</span></button>
+          <button id="btn-online" class="btn btn-secondary btn-lg">オンライン対戦<span class="btn-sub">入室順に2人で対戦</span></button>
         </div>
 
         <div id="online-menu" class="panel hidden">
-          <button id="btn-create" class="btn btn-primary">部屋を作成する</button>
-          <div class="or-divider"><span>または</span></div>
-          <div class="join-row">
-            <input id="input-code" type="text" maxlength="8" placeholder="招待コード" autocomplete="off" spellcheck="false" />
-            <button id="btn-join" class="btn btn-secondary">参加する</button>
-          </div>
+          <p class="waiting-hint">入ってきた順に2人ずつ自動でマッチします。<br />先に入った人が黒、後から入った人が白です。</p>
+          <button id="btn-match" class="btn btn-primary">対戦相手を探す</button>
           <p id="join-error" class="form-error hidden"></p>
         </div>
 
@@ -71,13 +67,11 @@
       </div>
     </div>
 
-    <!-- ===== 部屋待機 ===== -->
+    <!-- ===== マッチング待機 ===== -->
     <div id="waiting" class="overlay screen hidden">
       <div class="panel center-panel">
-        <h2>招待コード</h2>
-        <div id="room-code" class="code-display">----</div>
-        <button id="btn-copy" class="btn btn-secondary btn-sm">コードをコピー</button>
-        <p class="waiting-text">相手にコードを送ってください。<br />参加を待っています…</p>
+        <h2>マッチング中</h2>
+        <p class="waiting-text">対戦相手を探しています…<br />先に入った人から2人ずつ対局します。</p>
         <div class="spinner"></div>
         <button id="btn-wait-back" class="btn btn-ghost btn-sm">戻る</button>
       </div>
@@ -137,8 +131,8 @@
           </ul>
           <h3>オンライン対戦</h3>
           <ul>
-            <li>「部屋を作成」すると招待コードが出るので、相手に送ります。</li>
-            <li>相手がコードで参加すると対局開始。黒が作成者、白が参加者です。</li>
+            <li>「オンライン対戦」→「対戦相手を探す」でマッチング待ちになります。</li>
+            <li>入ってきた順に2人ずつ自動で対局が始まります。先に入った人が黒、後から入った人が白です。</li>
           </ul>
         </div>
         <button id="btn-rules-close" class="btn btn-primary btn-sm">閉じる</button>
