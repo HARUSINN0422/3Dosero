@@ -1,9 +1,9 @@
 // 3Dオセロ メイン制御
 // 画面遷移・ローカル対戦・オンライン対戦・HUD をまとめて管理する。
 
-import { Game, legalMoves, playerName, BLACK, WHITE, SIZE } from '/lib/game.js';
-import { Board3D } from '/js/board3d.js';
-import { Net } from '/js/net.js';
+import { Game, legalMoves, playerName, BLACK, WHITE, SIZE } from '../lib/game.js';
+import { Board3D } from './board3d.js';
+import { Net } from './net.js';
 
 // ---------------------------------------------------------------------------
 // DOM
@@ -503,7 +503,7 @@ document.addEventListener('keydown', (e) => {
 // ---------------------------------------------------------------------------
 async function refreshUpdateStatus() {
   try {
-    const res = await fetch('/api/update/status');
+    const res = await fetch(new URL('../api/update/status', import.meta.url));
     const s = await res.json();
     const ver = 'v1.0.0';
     if (s.updateAvailable) {
@@ -515,7 +515,7 @@ async function refreshUpdateStatus() {
         btn.disabled = true;
         btn.textContent = '更新中…（サーバーが再起動します）';
         try {
-          await fetch('/api/update/apply', { method: 'POST' });
+          await fetch(new URL('../api/update/apply', import.meta.url), { method: 'POST' });
         } catch {
           /* 再起動で接続が切れるのは正常 */
         }
