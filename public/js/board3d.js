@@ -3,7 +3,7 @@
 
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import { SIZE, idx, EMPTY, BLACK, WHITE, COLOR_HEX, xOf, yOf, zOf } from '/lib/game.js';
+import { SIZE, idx, EMPTY, BLACK, WHITE, COLOR_HEX, xOf, yOf, zOf } from '../lib/game.js';
 
 const HALF = (SIZE - 1) / 2;
 const HINT_COLOR = { [BLACK]: 0x35d6ff, [WHITE]: 0xffc94d };
