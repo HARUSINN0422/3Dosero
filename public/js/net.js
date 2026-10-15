@@ -60,7 +60,8 @@ export class Net {
 
   get url() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    return `${proto}//${location.host}/ws`;
+    const basePath = new URL('../', import.meta.url).pathname;
+    return `${proto}//${location.host}${basePath}ws`;
   }
 
   get connected() {
