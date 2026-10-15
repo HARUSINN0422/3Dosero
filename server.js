@@ -192,12 +192,15 @@ function sendStart(room, id) {
 
 function startMatch(firstWs, secondWs) {
   const id = makeMatchId();
+
+  // 先着順に関係なく、黒（先手）になるプレイヤーをランダムに決める。
+  const randomizedPlayers = Math.random() < 0.5
+    ? [firstWs, secondWs]
+    : [secondWs, firstWs];
+
   const room = {
     id,
-    seats: [
-      { ws: firstWs, connected: true },
-      { ws: secondWs, connected: true },
-    ],
+    seats: randomizedPlayers.map((ws) => ({ ws, connected: true })),
     game: new Game(),
     rematchVotes: new Set(),
     createdAt: Date.now(),
@@ -207,7 +210,7 @@ function startMatch(firstWs, secondWs) {
   firstWs.matchId = id;
   secondWs.matchId = id;
   sendStart(room, id);
-  log(`match ${id}: 対戦開始（先着が黒）`);
+  log(`match ${id}: 対戦開始（先手をランダム決定）`);
 }
 
 /** 入室順キューに並ぶ。2人揃い次第、先着が黒・後着が白で対局開始 */
