@@ -51,11 +51,11 @@
 
         <div class="menu-buttons">
           <button id="btn-local" class="btn btn-primary btn-lg">ローカル対戦<span class="btn-sub">1台の端末で2人</span></button>
-          <button id="btn-online" class="btn btn-secondary btn-lg">オンライン対戦<span class="btn-sub">入室順に2人で対戦</span></button>
+          <button id="btn-online" class="btn btn-secondary btn-lg">オンライン対戦<span class="btn-sub">2人で対戦・先手はランダム</span></button>
         </div>
 
         <div id="online-menu" class="panel hidden">
-          <p class="waiting-hint">入ってきた順に2人ずつ自動でマッチします。<br />先に入った人が黒、後から入った人が白です。</p>
+          <p class="waiting-hint">2人ずつ自動でマッチングします。<br />先手（黒）はランダムに決まります。</p>
           <button id="btn-match" class="btn btn-primary">対戦相手を探す</button>
           <p id="join-error" class="form-error hidden"></p>
         </div>
@@ -71,7 +71,7 @@
     <div id="waiting" class="overlay screen hidden">
       <div class="panel center-panel">
         <h2>マッチング中</h2>
-        <p class="waiting-text">対戦相手を探しています…<br />先に入った人から2人ずつ対局します。</p>
+        <p class="waiting-text">対戦相手を探しています…<br />2人そろうと対局が始まり、先手はランダムに決まります。</p>
         <div class="spinner"></div>
         <button id="btn-wait-back" class="btn btn-ghost btn-sm">戻る</button>
       </div>
@@ -132,7 +132,7 @@
           <h3>オンライン対戦</h3>
           <ul>
             <li>「オンライン対戦」→「対戦相手を探す」でマッチング待ちになります。</li>
-            <li>入ってきた順に2人ずつ自動で対局が始まります。先に入った人が黒、後から入った人が白です。</li>
+            <li>2人ずつ自動でマッチングして対局が始まります。先手（黒）はランダムに決まります。</li>
           </ul>
         </div>
         <button id="btn-rules-close" class="btn btn-primary btn-sm">閉じる</button>
